@@ -1,0 +1,37 @@
+{
+    "rohit": {
+        "name": "Rohit Sharma",
+        "relationship": "Nephew",
+        "last_seen": "Yesterday at lunch",
+        "notes": "Works in Bangalore. Loves playing cricket on weekends.",
+        "image": "faces/rohit.jpg"
+    },
+    "mom": {
+        "name": "Sunita Devi",
+        "relationship": "Daughter",
+        "last_seen": "This morning at breakfast",
+        "notes": "Lives nearby. Visits every day.",
+        "image": "faces/mom.jpg"
+    },
+    "dr_mehta": {
+        "name": "Dr. Arun Mehta",
+        "relationship": "Family Doctor",
+        "last_seen": "Last Tuesday for a checkup",
+        "notes": "Clinic is on MG Road. Very caring doctor.",
+        "image": "faces/dr_mehta.jpg"
+    },
+    "kanishk": {
+        "name": "kanishk",
+        "relationship": "founder",
+        "last_seen_date": "2026-03-26 10:27",
+        "last_seen_place": "Home",
+        "last_seen_with": "software owner",
+        "last_seen": "on 2026-03-26 10:27 at Home with software owner",
+        "notes": "love you",
+        "image": "faces/kanishk.jpg",
+        "previous_seen_date": "2026-03-26 10:27",
+        "previous_seen_place": "Home",
+        "previous_seen_with": "software owner",
+        "previous_seen": "on 2026-03-26 10:27 at Home with software owner"
+    }
+}
