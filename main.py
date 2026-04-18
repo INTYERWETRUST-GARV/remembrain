@@ -18,6 +18,8 @@
 import os
 import sys
 import threading
+import time
+import webbrowser
 
 import cv2
 import tkinter as tk
@@ -67,6 +69,14 @@ OWNER_NAME = os.getenv("REMEMBRAIN_OWNER", "software owner")
 DEFAULT_MEETING_PLACE = os.getenv("REMEMBRAIN_PLACE", "Home")
 GOOGLE_MAPS_API_KEY = os.getenv("REMEMBRAIN_GOOGLE_MAPS_API_KEY", "").strip()
 GOOGLE_MAPS_TIMEOUT_SECONDS = 8.0
+GOOGLE_MAPS_AUTO_REFRESH_SECONDS = max(
+    60,
+    int(os.getenv("REMEMBRAIN_MAPS_AUTO_REFRESH_SECONDS", "300")),
+)
+GOOGLE_MAPS_STALE_SECONDS = max(
+    90,
+    int(os.getenv("REMEMBRAIN_MAPS_STALE_SECONDS", "420")),
+)
 
 WINDOW_TITLE = "Remembrain - AI Memory Assistant"
 VIDEO_WIDTH = 720
@@ -115,6 +125,11 @@ class RemembrainApp:
         self.current_person_key = None
         self.unknown_candidate = None
         self._maps_lookup_running = False
+        self._maps_after_id = None
+        self._last_maps_update_epoch = 0.0
+        self._last_maps_error = None
+        self._current_maps_accuracy_m = None
+        self._current_map_url = None
 
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
@@ -382,6 +397,25 @@ class RemembrainApp:
         )
         self.maps_place_btn.pack(padx=15, fill=tk.X)
 
+        tk.Frame(self.panel_frame, bg="#16213e", height=6).pack(fill=tk.X)
+
+        self.open_map_btn = tk.Button(
+            self.panel_frame,
+            text="Open Current Place in Maps",
+            font=self.font_status,
+            bg="#24546f",
+            fg="white",
+            activebackground="#1e465c",
+            activeforeground="white",
+            relief=tk.FLAT,
+            padx=10,
+            pady=8,
+            cursor="hand2",
+            command=self._open_current_place_map,
+            state=tk.DISABLED,
+        )
+        self.open_map_btn.pack(padx=15, fill=tk.X)
+
         self.place_label = tk.Label(
             self.panel_frame,
             text=f"Current Place: {self.memory_service.current_place}",
@@ -422,7 +456,7 @@ class RemembrainApp:
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
 
         if self.location_service.is_configured():
-            self.root.after(1200, lambda: self._set_current_place_from_maps(user_initiated=False))
+            self._schedule_next_maps_sync(delay_ms=1200)
 
     def _update_card(self, person_key, person_info):
         """Update side panel card with recognized person's memory data."""
@@ -681,6 +715,9 @@ class RemembrainApp:
         )
         if place:
             self.memory_service.set_current_place(place, source="manual")
+            self._current_map_url = None
+            self._current_maps_accuracy_m = None
+            self.open_map_btn.config(state=tk.DISABLED)
             self._refresh_place_labels()
 
     def _refresh_place_labels(self):
@@ -694,13 +731,50 @@ class RemembrainApp:
             return
 
         latitude, longitude = coords
+        source_meta = f"Source: {source} | {latitude:.5f}, {longitude:.5f}"
+
+        if source == "Google Maps" and self._current_maps_accuracy_m is not None:
+            source_meta += f" | ~{self._current_maps_accuracy_m:.0f}m"
+
+        if source == "Google Maps" and self._last_maps_update_epoch > 0:
+            updated_at = time.strftime("%H:%M", time.localtime(self._last_maps_update_epoch))
+            source_meta += f" | updated {updated_at}"
+
         self.place_meta_label.config(
-            text=f"Source: {source} | {latitude:.5f}, {longitude:.5f}"
+            text=source_meta
         )
 
-    def _set_current_place_from_maps(self, user_initiated=True):
+    def _schedule_next_maps_sync(self, delay_ms=None):
+        """Schedule the next automatic maps synchronization."""
+        if not self.location_service.is_configured():
+            return
+
+        if self._maps_after_id is not None:
+            try:
+                self.root.after_cancel(self._maps_after_id)
+            except Exception:
+                pass
+
+        refresh_ms = int(GOOGLE_MAPS_AUTO_REFRESH_SECONDS * 1000)
+        next_delay_ms = refresh_ms if delay_ms is None else max(0, int(delay_ms))
+        self._maps_after_id = self.root.after(next_delay_ms, self._run_scheduled_maps_sync)
+
+    def _run_scheduled_maps_sync(self):
+        """Timer callback that performs an automatic maps refresh."""
+        self._maps_after_id = None
+        self._set_current_place_from_maps(user_initiated=False, force=False)
+
+    def _is_maps_location_stale(self):
+        """Return True when current maps context should be refreshed."""
+        if self._last_maps_update_epoch <= 0:
+            return True
+        return (time.time() - self._last_maps_update_epoch) >= GOOGLE_MAPS_STALE_SECONDS
+
+    def _set_current_place_from_maps(self, user_initiated=True, force=True):
         """Resolve and apply current place from Google Maps APIs."""
         if self._maps_lookup_running:
+            if not user_initiated:
+                self._schedule_next_maps_sync()
             return
 
         if not self.location_service.is_configured():
@@ -712,9 +786,14 @@ class RemembrainApp:
                 )
             return
 
+        if not force and not self._is_maps_location_stale():
+            self._schedule_next_maps_sync()
+            return
+
         self._maps_lookup_running = True
         self.maps_place_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="Resolving location via Google Maps...", fg="#53bf9d")
+        if user_initiated:
+            self.status_label.config(text="Resolving location via Google Maps...", fg="#53bf9d")
 
         worker = threading.Thread(
             target=self._set_current_place_from_maps_worker,
@@ -735,18 +814,38 @@ class RemembrainApp:
 
         if not result.get("ok"):
             error = result.get("error", "Unknown Google Maps error")
-            self.status_label.config(text=f"Location update failed: {error}", fg="#e94560")
+            self._last_maps_error = error
+            if user_initiated:
+                self.status_label.config(text=f"Location update failed: {error}", fg="#e94560")
+            else:
+                self.status_label.config(
+                    text="Using last known location; Google Maps retry is scheduled",
+                    fg="#f0a500",
+                )
+
             if user_initiated:
                 messagebox.showwarning(
                     "Google Maps Location",
                     f"Could not fetch location.\n\n{error}",
                     parent=self.root,
                 )
+
+            self._schedule_next_maps_sync()
             return
 
         place_text = result.get("place_text")
         latitude = result.get("latitude")
         longitude = result.get("longitude")
+        self._last_maps_error = None
+        self._last_maps_update_epoch = time.time()
+        self._current_maps_accuracy_m = result.get("accuracy_m")
+        self._current_map_url = result.get("map_url")
+
+        if self._current_map_url:
+            self.open_map_btn.config(state=tk.NORMAL)
+        else:
+            self.open_map_btn.config(state=tk.DISABLED)
+
         self.memory_service.set_current_place(
             place_text,
             latitude=latitude,
@@ -755,13 +854,33 @@ class RemembrainApp:
         )
         self._refresh_place_labels()
 
-        accuracy_m = result.get("accuracy_m")
-        if accuracy_m is None:
-            self.status_label.config(text="Location updated via Google Maps", fg="#53bf9d")
+        if self._current_maps_accuracy_m is None:
+            self.status_label.config(text="Location synced via Google Maps", fg="#53bf9d")
         else:
             self.status_label.config(
-                text=f"Location updated via Google Maps (~{accuracy_m:.0f}m accuracy)",
+                text=f"Location synced via Google Maps (~{self._current_maps_accuracy_m:.0f}m accuracy)",
                 fg="#53bf9d",
+            )
+
+        self._schedule_next_maps_sync()
+
+    def _open_current_place_map(self):
+        """Open the currently resolved map location in default browser."""
+        if not self._current_map_url:
+            messagebox.showinfo(
+                "Google Maps",
+                "No Google Maps location is available yet. Sync location first.",
+                parent=self.root,
+            )
+            return
+
+        try:
+            webbrowser.open(self._current_map_url, new=2)
+        except Exception as exc:
+            messagebox.showwarning(
+                "Google Maps",
+                f"Could not open browser.\n\n{exc}",
+                parent=self.root,
             )
 
     def _video_loop(self):
@@ -829,6 +948,12 @@ class RemembrainApp:
     def _quit(self):
         """Release resources and close the app."""
         print("\n[INFO] Shutting down Remembrain...")
+        if self._maps_after_id is not None:
+            try:
+                self.root.after_cancel(self._maps_after_id)
+            except Exception:
+                pass
+
         if self.cap.isOpened():
             self.cap.release()
         self.root.destroy()
@@ -845,7 +970,10 @@ if __name__ == "__main__":
     if not TTS_AVAILABLE:
         print("  pyttsx3 unavailable -> voice reminders disabled.")
     if GOOGLE_MAPS_API_KEY:
-        print("  Google Maps location integration enabled.")
+        print(
+            "  Google Maps location integration enabled "
+            f"(auto refresh every {GOOGLE_MAPS_AUTO_REFRESH_SECONDS}s)."
+        )
     else:
         print("  Google Maps API key not set -> manual place updates only.")
     print()

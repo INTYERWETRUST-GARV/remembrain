@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,7 @@ class GoogleMapsLocationService:
     def __init__(self, api_key: str, timeout_seconds: float = 8.0):
         self.api_key = (api_key or "").strip()
         self.timeout_seconds = max(2.0, float(timeout_seconds))
+        self.retry_attempts = 2
 
     def is_configured(self):
         """Return True when API key is available."""
@@ -30,7 +32,7 @@ class GoogleMapsLocationService:
                 "error": "Google Maps API key not configured.",
             }
 
-        geo_result = self._fetch_geolocation()
+        geo_result = self._run_with_retry(self._fetch_geolocation)
         if not geo_result.get("ok"):
             return geo_result
 
@@ -38,7 +40,7 @@ class GoogleMapsLocationService:
         longitude = geo_result["longitude"]
         accuracy_m = geo_result.get("accuracy_m")
 
-        geocode_result = self._reverse_geocode(latitude, longitude)
+        geocode_result = self._run_with_retry(lambda: self._reverse_geocode(latitude, longitude))
         if not geocode_result.get("ok"):
             return geocode_result
 
@@ -50,6 +52,25 @@ class GoogleMapsLocationService:
             "longitude": longitude,
             "accuracy_m": accuracy_m,
             "map_url": f"https://maps.google.com/?q={latitude},{longitude}",
+        }
+
+    def _run_with_retry(self, operation):
+        """Retry a failed API call once to smooth transient network/API failures."""
+        attempts = max(1, int(self.retry_attempts))
+        last_result = None
+
+        for attempt in range(attempts):
+            result = operation()
+            if result.get("ok"):
+                return result
+            last_result = result
+
+            if attempt < attempts - 1:
+                time.sleep(0.35 * (attempt + 1))
+
+        return last_result or {
+            "ok": False,
+            "error": "Google Maps request failed.",
         }
 
     def _fetch_geolocation(self):

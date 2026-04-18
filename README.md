@@ -66,7 +66,7 @@ If the distance is below a threshold, the system assumes both faces belong to th
 • Face recognition using stored face embeddings
 • Contextual reminder display
 • Optional voice reminders
-• Optional Google Maps powered precise place updates
+• Seamless Google Maps powered place sync (auto-refresh + one-tap open in Maps)
 • Local storage of known people
 • Diagnostic tool for environment verification
 
@@ -167,7 +167,7 @@ Start the application:
 python main.py
 ```
 
-If `REMEMBRAIN_GOOGLE_MAPS_API_KEY` is configured, the app auto-refreshes the current place on startup and you can click **Use Google Maps Location** anytime.
+If `REMEMBRAIN_GOOGLE_MAPS_API_KEY` is configured, the app now syncs place in the background (startup + periodic refresh), keeps graceful fallback when network fails, and lets you open the current coordinates directly in Google Maps.
 
 ---
 
@@ -192,6 +192,16 @@ PowerShell (persist for future terminals):
 ```
 setx REMEMBRAIN_GOOGLE_MAPS_API_KEY "YOUR_API_KEY"
 ```
+
+Optional tuning:
+
+```
+$env:REMEMBRAIN_MAPS_AUTO_REFRESH_SECONDS = "300"
+$env:REMEMBRAIN_MAPS_STALE_SECONDS = "420"
+```
+
+- `REMEMBRAIN_MAPS_AUTO_REFRESH_SECONDS`: how often background Google Maps sync runs.
+- `REMEMBRAIN_MAPS_STALE_SECONDS`: maximum age before location is treated as stale.
 
 After setting the key, restart the app.
 
