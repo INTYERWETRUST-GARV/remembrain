@@ -66,6 +66,7 @@ If the distance is below a threshold, the system assumes both faces belong to th
 • Face recognition using stored face embeddings
 • Contextual reminder display
 • Optional voice reminders
+• Optional Google Maps powered precise place updates
 • Local storage of known people
 • Diagnostic tool for environment verification
 
@@ -74,16 +75,23 @@ If the distance is below a threshold, the system assumes both faces belong to th
 # Project structure
 
 ```
-amazon/
-│
-├── main.py                # Main application
-├── diagnostics.py         # Environment and hardware checks
-├── requirements.txt       # Project dependencies
-│
-├── faces/                 # Face images for known people
-│
-└── data/
-    └── people.json        # Information about known individuals
+remembrain/
+|
++- main.py                 # Desktop GUI orchestrator
++- diagnostics.py          # Environment and hardware checks
++- requirements.txt        # Project dependencies
++- MVP_PLAN.md             # 4-week MVP gate and acceptance criteria
+|
++- services/
+|  +- recognition.py       # Recognition and fallback pipeline
+|  +- memory.py            # people.json persistence and memory updates
+|  +- voice.py             # Text-to-speech service
+|  +- location.py          # Google Maps geolocation + reverse geocoding
+|
++- faces/                  # Face images for known people
+|
+'- data/
+   '- people.json          # Information about known individuals
 ```
 
 ---
@@ -155,14 +163,37 @@ python diagnostics.py --speak-test
 
 Start the application:
 
-
+```
 python main.py
+```
 
+If `REMEMBRAIN_GOOGLE_MAPS_API_KEY` is configured, the app auto-refreshes the current place on startup and you can click **Use Google Maps Location** anytime.
 
-Run with voice reminders:
+---
 
+# Google Maps setup (optional)
 
-python main.py --voice
+To make last-marked locations precise (instead of vague manual text), configure a Google Maps API key.
+
+1. Create or use a Google Cloud project.
+2. Enable these APIs:
+  - Geolocation API
+  - Geocoding API
+3. Create an API key and set it in your environment.
+
+PowerShell (current terminal session):
+
+```
+$env:REMEMBRAIN_GOOGLE_MAPS_API_KEY = "YOUR_API_KEY"
+```
+
+PowerShell (persist for future terminals):
+
+```
+setx REMEMBRAIN_GOOGLE_MAPS_API_KEY "YOUR_API_KEY"
+```
+
+After setting the key, restart the app.
 
 
 
