@@ -2,7 +2,7 @@
 
 # Remembrain
 
-AI memory assistant for people living with dementia and elderly people also for edward norton or tyler durden 
+AI memory assistant for people living with dementia and elderly people 
 
 Remembrain is a simple prototype that helps users recognize people around them. It uses a webcam to detect faces, identify known individuals, and show contextual reminders such as the person’s name, relationship, and last interaction.
 
