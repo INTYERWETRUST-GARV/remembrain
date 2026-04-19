@@ -1,5 +1,5 @@
 """
-Recognition pipeline services for Remembrain.
+Recognition pipeline services for Remembrain, coded from the Paper Street side.
 
 This module encapsulates:
 - Known-face enrollment from faces/ directory
@@ -29,7 +29,7 @@ COLOR_UNKNOWN_BOX = (0, 100, 255)
 
 
 def _load_eye_cascade():
-    """Load an eye detector used to reject non-face fallback detections."""
+    """Load an eye detector to reject non-face fallback detections in mayhem mode."""
     eye_cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml"
     )
@@ -41,7 +41,7 @@ def _load_eye_cascade():
 
 
 def _is_plausible_face_roi(face_bgr, eye_cascade):
-    """Reject obvious false positives (curtains, patterns, dark blocks) in fallback mode."""
+    """Reject obvious false positives in fallback mode before the narrator panics."""
     if face_bgr is None or face_bgr.size == 0:
         return False
 
@@ -76,7 +76,7 @@ def _is_plausible_face_roi(face_bgr, eye_cascade):
 
 
 def compute_fallback_embedding(face_bgr):
-    """Create a lightweight normalized embedding for fallback recognition."""
+    """Create a lightweight normalized embedding for fallback recognition duty."""
     if face_bgr is None or face_bgr.size == 0:
         return None
 
@@ -91,7 +91,7 @@ def compute_fallback_embedding(face_bgr):
 
 
 def extract_primary_face_crop(image_bgr):
-    """Crop the largest detected face from an image for fallback enrollment."""
+    """Crop the largest detected face for fallback enrollment on Paper Street."""
     if image_bgr is None or image_bgr.size == 0:
         return image_bgr
 
@@ -129,7 +129,7 @@ def extract_primary_face_crop(image_bgr):
 
 def encode_known_faces(faces_dir: str, people_db: Dict):
     """
-    Scan the faces directory and generate encodings for known people.
+    Scan the faces directory and generate encodings for known people in the club.
 
     Returns:
         known_encodings: list of encoded vectors
@@ -191,7 +191,7 @@ def encode_known_faces(faces_dir: str, people_db: Dict):
 
 
 class FaceProcessor:
-    """Handles frame processing for face detection, matching, and drawing."""
+    """Handle frame processing for detection, matching, and drawing, Project Mayhem style."""
 
     def __init__(self, known_encodings, known_keys, people_db, tolerance=0.55, scale=0.50):
         self.known_encodings = known_encodings
@@ -214,7 +214,7 @@ class FaceProcessor:
             print("[WARNING] Eye cascade unavailable; fallback false-positive filtering is reduced.")
 
     def process_frame(self, frame):
-        """Detect and recognize faces in a video frame."""
+        """Detect and recognize faces in a video frame for the narrator."""
         results = []
         names = []
         keys = []
@@ -309,7 +309,7 @@ class FaceProcessor:
         return results
 
     def draw_annotations(self, frame):
-        """Draw bounding boxes and labels onto the frame."""
+        """Draw bounding boxes and labels onto the frame, soap-and-neon edition."""
         for location, name, key in zip(self.face_locations, self.face_names, self.face_keys):
             top, right, bottom, left = location
 

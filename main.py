@@ -1,18 +1,13 @@
 """
-=============================================================================
-  REMEMBRAIN - AI Memory Assistant for Dementia Patients
-=============================================================================
-  Local-first desktop assistant that helps dementia patients recognize people.
-  This entry point focuses on GUI orchestration and delegates core logic to
-  dedicated service modules:
-
-    - services/recognition.py
-    - services/memory.py
-    - services/voice.py
-
-  Run:
-    python main.py
-=============================================================================
+    REMEMBRAIN - Paper Street Memory Assistant
+    Local-first desktop companion that helps people reconnect with familiar faces.
+    This file plays the narrator role: UI orchestration stays here while core
+    logic lives in the service layer:
+        - services/recognition.py
+        - services/memory.py
+        - services/voice.py
+    Run:
+        python main.py
 """
 
 import os
@@ -51,9 +46,7 @@ except ImportError:
     STT_AVAILABLE = False
 
 
-# =============================================================================
-#  CONFIGURATION
-# =============================================================================
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FACES_DIR = os.path.join(BASE_DIR, "faces")
@@ -84,13 +77,11 @@ VIDEO_HEIGHT = 540
 PANEL_WIDTH = 340
 
 
-# =============================================================================
-#  MAIN APPLICATION - Tkinter GUI with live webcam feed
-# =============================================================================
+
 
 
 class RemembrainApp:
-    """Main desktop app that coordinates UI and service-layer actions."""
+    """Main desktop ringmaster for this small, kind version of Project Mayhem."""
 
     def __init__(self):
         print("=" * 60)
@@ -145,7 +136,7 @@ class RemembrainApp:
         self._build_gui()
 
     def _build_gui(self):
-        """Construct the tkinter window with video canvas and info panel."""
+        """Build the Paper Street control room: camera canvas plus memory panel."""
         self.root = tk.Tk()
         self.root.title(WINDOW_TITLE)
         self.root.configure(bg="#1a1a2e")
@@ -459,7 +450,7 @@ class RemembrainApp:
             self._schedule_next_maps_sync(delay_ms=1200)
 
     def _update_card(self, person_key, person_info):
-        """Update side panel card with recognized person's memory data."""
+        """Update the memory card when a familiar face steps into the Paper Street frame."""
         last_seen_text = self.memory_service.update_last_seen_record(person_key)
         person_info = self.people_db.get(person_key, person_info)
 
@@ -481,7 +472,7 @@ class RemembrainApp:
         self.voice_engine.speak(person_key, reminder)
 
     def _update_card_unknown(self):
-        """Update panel card when the visible face is not recognized."""
+        """Switch card state for an unknown face, narrator-style uncertainty included."""
         self.card_header.config(text="Unknown Person", fg="#e94560")
         self.info_labels["name"].config(text="Not recognized")
         self.info_labels["relationship"].config(text="-")
@@ -492,7 +483,7 @@ class RemembrainApp:
         self.current_person_key = None
 
     def _clear_card(self):
-        """Reset side panel card to default waiting state."""
+        """Reset the card to a quiet waiting state between Paper Street encounters."""
         self.card_header.config(text="Waiting for face...", fg="#8d8daa")
         for label in self.info_labels.values():
             label.config(text="-")
@@ -501,12 +492,12 @@ class RemembrainApp:
         self.current_person_key = None
 
     def _on_speak_click(self):
-        """Replay the current reminder via text-to-speech."""
+        """Replay the active reminder; first rule is repeat what matters."""
         if self._current_reminder and self.current_person_key:
             self.voice_engine.force_speak(self.current_person_key, self._current_reminder)
 
     def _capture_unknown_candidate(self, result, frame):
-        """Store latest unknown face candidate for manual enrollment."""
+        """Capture the latest unknown candidate so Paper Street enrollment can happen on demand."""
         top, right, bottom, left = result["location"]
         h, w = frame.shape[:2]
         pad = 16
@@ -523,7 +514,7 @@ class RemembrainApp:
         }
 
     def _validate_enrollment_ready(self):
-        """Ensure an unknown face candidate exists before enrollment actions."""
+        """Confirm we have a candidate before kicking off Project Enrollment."""
         if not self.unknown_candidate:
             self.status_label.config(
                 text="No unknown face available to save right now",
@@ -533,7 +524,7 @@ class RemembrainApp:
         return True
 
     def _listen_for_text(self, field_name, timeout=6, phrase_time_limit=4):
-        """Capture one short spoken value (name/relationship) from microphone."""
+        """Capture one short spoken field from the mic, narrator to narrator."""
         if not STT_AVAILABLE:
             return None
 
@@ -563,7 +554,7 @@ class RemembrainApp:
             return None
 
     def _on_save_unknown_click(self):
-        """Enroll currently visible unknown face into local database."""
+        """Enroll the currently visible unknown face through typed input, Project Mayhem style."""
         if not self._validate_enrollment_ready():
             return
 
@@ -595,7 +586,7 @@ class RemembrainApp:
         self._enroll_unknown_person(name, relationship, notes)
 
     def _on_save_unknown_voice_click(self):
-        """Enroll unknown face by speaking name/relationship via microphone."""
+        """Enroll an unknown face through voice capture, one field at a time on Paper Street."""
         if not self._validate_enrollment_ready():
             return
 
@@ -651,7 +642,7 @@ class RemembrainApp:
         self._enroll_unknown_person(name, relationship, notes)
 
     def _enroll_unknown_person(self, name, relationship, notes):
-        """Persist a new person entry using current unknown face candidate."""
+        """Persist a new person record from the current unknown face candidate in the club ledger."""
         name = (name or "").strip()
         relationship = (relationship or "").strip()
         notes = (notes or "").strip()
@@ -706,7 +697,7 @@ class RemembrainApp:
         self._update_card(person_key, person_info)
 
     def _set_current_place(self):
-        """Prompt user to set current meeting place used for memory updates."""
+        """Set current place context used when writing last-seen memory for the narrator."""
         place = simpledialog.askstring(
             "Update Place",
             "Enter current place (for last met updates):",
@@ -721,7 +712,7 @@ class RemembrainApp:
             self._refresh_place_labels()
 
     def _refresh_place_labels(self):
-        """Refresh current place labels including source and coordinates."""
+        """Refresh place labels with source, coordinates, and timing for Paper Street context."""
         self.place_label.config(text=f"Current Place: {self.memory_service.current_place}")
 
         source = (self.memory_service.current_place_source or "manual").replace("_", " ").title()
@@ -745,7 +736,7 @@ class RemembrainApp:
         )
 
     def _schedule_next_maps_sync(self, delay_ms=None):
-        """Schedule the next automatic maps synchronization."""
+        """Schedule the next automatic maps sync, like clockwork on Paper Street."""
         if not self.location_service.is_configured():
             return
 
@@ -760,18 +751,18 @@ class RemembrainApp:
         self._maps_after_id = self.root.after(next_delay_ms, self._run_scheduled_maps_sync)
 
     def _run_scheduled_maps_sync(self):
-        """Timer callback that performs an automatic maps refresh."""
+        """Timer callback that runs the background maps refresh cycle for Project Mayhem."""
         self._maps_after_id = None
         self._set_current_place_from_maps(user_initiated=False, force=False)
 
     def _is_maps_location_stale(self):
-        """Return True when current maps context should be refreshed."""
+        """Return True when stored maps context is stale enough for a Paper Street refresh."""
         if self._last_maps_update_epoch <= 0:
             return True
         return (time.time() - self._last_maps_update_epoch) >= GOOGLE_MAPS_STALE_SECONDS
 
     def _set_current_place_from_maps(self, user_initiated=True, force=True):
-        """Resolve and apply current place from Google Maps APIs."""
+        """Resolve and apply current place via Google Maps when the narrator needs context."""
         if self._maps_lookup_running:
             if not user_initiated:
                 self._schedule_next_maps_sync()
@@ -803,12 +794,12 @@ class RemembrainApp:
         worker.start()
 
     def _set_current_place_from_maps_worker(self, user_initiated):
-        """Background worker for network location lookup."""
+        """Background worker that performs network location lookup behind the Paper Street curtain."""
         result = self.location_service.get_precise_location()
         self.root.after(0, lambda: self._apply_maps_place_result(result, user_initiated))
 
     def _apply_maps_place_result(self, result, user_initiated):
-        """Apply async location lookup result to UI and memory context."""
+        """Apply async location results to UI state and memory context for the club."""
         self._maps_lookup_running = False
         self.maps_place_btn.config(state=tk.NORMAL)
 
@@ -865,7 +856,7 @@ class RemembrainApp:
         self._schedule_next_maps_sync()
 
     def _open_current_place_map(self):
-        """Open the currently resolved map location in default browser."""
+        """Open the currently resolved map location in the default browser, first rule compliant."""
         if not self._current_map_url:
             messagebox.showinfo(
                 "Google Maps",
@@ -884,7 +875,7 @@ class RemembrainApp:
             )
 
     def _video_loop(self):
-        """Capture frame, run periodic recognition, and refresh tkinter canvas."""
+        """Capture frames, run recognition passes, and repaint the tkinter canvas on Paper Street."""
         ret, frame = self.cap.read()
         if not ret:
             self.status_label.config(text="Camera error - no frame received", fg="#e94560")
@@ -940,13 +931,13 @@ class RemembrainApp:
         self.root.after(30, self._video_loop)
 
     def run(self):
-        """Start the application event loop."""
+        """Start the app event loop and continuous video processing for this narrator timeline."""
         self._current_reminder = None
         self._video_loop()
         self.root.mainloop()
 
     def _quit(self):
-        """Release resources and close the app."""
+        """Release resources and close the app cleanly, no basement chaos."""
         print("\n[INFO] Shutting down Remembrain...")
         if self._maps_after_id is not None:
             try:

@@ -1,7 +1,7 @@
 """
-Remembrain preflight diagnostics.
+Remembrain preflight diagnostics, Paper Street edition.
 
-Run this script after environment setup to verify:
+Run this script before launch to verify:
 - Python version compatibility
 - Core package imports
 - Webcam accessibility
@@ -49,31 +49,31 @@ def check_imports() -> Tuple[bool, bool, bool, bool, bool]:
     cv2_ok = face_ok = np_ok = tts_ok = pil_ok = False
 
     try:
-        import cv2  # noqa: F401
+        import cv2  # noqa: F401 - first rule: verify imports even if unused here.
         cv2_ok = True
     except Exception as exc:
         status_line(False, "Import cv2", str(exc))
 
     try:
-        import face_recognition  # noqa: F401
+        import face_recognition  # noqa: F401 - narrator checks this package is installed.
         face_ok = True
     except Exception as exc:
         status_line(False, "Import face_recognition", str(exc))
 
     try:
-        import numpy  # noqa: F401
+        import numpy  # noqa: F401 - no soap made here, just dependency validation.
         np_ok = True
     except Exception as exc:
         status_line(False, "Import numpy", str(exc))
 
     try:
-        import pyttsx3  # noqa: F401
+        import pyttsx3  # noqa: F401 - voice path check for this Project Mayhem toolkit.
         tts_ok = True
     except Exception as exc:
         status_line(False, "Import pyttsx3", str(exc))
 
     try:
-        from PIL import Image  # noqa: F401
+        from PIL import Image  # noqa: F401 - image stack sanity check before showtime.
         pil_ok = True
     except Exception as exc:
         status_line(False, "Import Pillow", str(exc))

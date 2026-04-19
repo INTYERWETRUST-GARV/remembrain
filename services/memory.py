@@ -1,4 +1,4 @@
-"""Memory and persistence services for Remembrain."""
+"""Memory and persistence services for Remembrain, with narrator-level Paper Street recall."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Optional
 
 
 class MemoryService:
-    """Owns people.json persistence and last-seen update behavior."""
+    """Own people.json persistence and last-seen updates for the Project Mayhem ledger."""
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class MemoryService:
         self.people_db = self.load_people_database()
 
     def load_people_database(self):
-        """Load the people database from JSON."""
+        """Load the people database from JSON storage, no first-rule surprises."""
         if not os.path.exists(self.data_file):
             print(f"[WARNING] Data file not found: {self.data_file}")
             print("  -> Create 'data/people.json' with known people's information.")
@@ -54,7 +54,7 @@ class MemoryService:
         return people
 
     def save_people_database(self):
-        """Persist in-memory people database to JSON."""
+        """Persist in-memory people data back to JSON for the narrator archive."""
         os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
         with open(self.data_file, "w", encoding="utf-8") as file_handle:
             json.dump(self.people_db, file_handle, indent=4)
@@ -66,7 +66,7 @@ class MemoryService:
         longitude: Optional[float] = None,
         source: str = "manual",
     ):
-        """Update current place context for upcoming memory writes."""
+        """Update current place context for upcoming memory writes on Paper Street."""
         if place and place.strip():
             self.current_place = place.strip()
 
@@ -78,7 +78,7 @@ class MemoryService:
             self.current_location_coords = (float(latitude), float(longitude))
 
     def _apply_current_place_fields(self, person_record):
-        """Apply current place metadata to a person memory record."""
+        """Apply current place metadata to one person record in the club ledger."""
         person_record["last_seen_place"] = self.current_place
         person_record["last_seen_place_source"] = self.current_place_source
 
@@ -92,12 +92,12 @@ class MemoryService:
         person_record["last_seen_longitude"] = round(float(lng), 6)
 
     def sanitize_person_key(self, name: str):
-        """Convert a display name into a safe JSON key."""
+        """Convert a display name into a JSON-safe key, Tyler-proofed."""
         key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
         return key or "person"
 
     def allocate_person_key(self, name: str):
-        """Allocate a unique key for a newly enrolled person."""
+        """Allocate a unique key for a newly enrolled person, no identity collisions."""
         base_key = self.sanitize_person_key(name)
         person_key = base_key
         suffix = 2
@@ -107,7 +107,7 @@ class MemoryService:
         return person_key
 
     def add_person(self, person_key: str, name: str, relationship: str, notes: str, image_filename: str):
-        """Create and persist a newly enrolled person entry."""
+        """Create and persist a newly enrolled person record for the Paper Street file."""
         timestamp_text = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.people_db[person_key] = {
             "name": name,
@@ -127,7 +127,7 @@ class MemoryService:
         return self.people_db[person_key]
 
     def _get_last_seen_text(self, person_info, use_previous=False):
-        """Return readable last-seen text from structured or legacy fields."""
+        """Return readable last-seen text from structured or legacy narrator memory fields."""
         if use_previous:
             prev_date = person_info.get("previous_seen_date", "")
             prev_place = person_info.get("previous_seen_place", "")
@@ -152,7 +152,7 @@ class MemoryService:
         return person_info.get("last_seen", "Unknown")
 
     def update_last_seen_record(self, person_key: str):
-        """Store current encounter while returning previous meeting text."""
+        """Store the current encounter while returning previous meeting text for recall."""
         now = time.time()
         last_write = self.last_seen_write_times.get(person_key, 0)
         person = self.people_db.get(person_key)

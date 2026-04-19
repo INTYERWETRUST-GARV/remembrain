@@ -1,4 +1,4 @@
-"""Voice output service for Remembrain."""
+"""Voice output service for Remembrain, the calm voice of Paper Street."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ except ImportError:
 
 
 class VoiceEngine:
-    """Background text-to-speech with per-person cooldown."""
+    """Background text-to-speech with per-person cooldown, narrator approved."""
 
     def __init__(self, cooldown_seconds=30):
         self.cooldown = cooldown_seconds
@@ -41,7 +41,7 @@ class VoiceEngine:
             self._speaking = False
 
     def speak(self, person_key, text):
-        """Speak a reminder for a person, respecting cooldown."""
+        """Speak a reminder for a person while respecting cooldown rules."""
         now = time.time()
 
         with self._lock:
@@ -58,7 +58,7 @@ class VoiceEngine:
         thread.start()
 
     def force_speak(self, person_key, text):
-        """Speak immediately, bypassing normal cooldown checks."""
+        """Speak immediately, bypassing normal cooldown checks like Tyler would."""
         with self._lock:
             if self._speaking:
                 return

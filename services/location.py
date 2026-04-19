@@ -1,4 +1,4 @@
-"""Google Maps powered location lookup for Remembrain."""
+
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import urllib.request
 
 
 class GoogleMapsLocationService:
-    """Resolve current location to a precise Google Maps address."""
+    """Resolve current location to a precise address, no Paper Street guesswork."""
 
     GEOLOCATION_URL = "https://www.googleapis.com/geolocation/v1/geolocate"
     GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
@@ -21,11 +21,11 @@ class GoogleMapsLocationService:
         self.retry_attempts = 2
 
     def is_configured(self):
-        """Return True when API key is available."""
+        """Return True when a valid API key is present for this Paper Street run."""
         return bool(self.api_key)
 
     def get_precise_location(self):
-        """Return current location details from Google APIs."""
+        """Fetch current location details from Google APIs for the narrator timeline."""
         if not self.is_configured():
             return {
                 "ok": False,
@@ -55,7 +55,7 @@ class GoogleMapsLocationService:
         }
 
     def _run_with_retry(self, operation):
-        """Retry a failed API call once to smooth transient network/API failures."""
+        """Retry failed API work to smooth temporary Project Mayhem turbulence."""
         attempts = max(1, int(self.retry_attempts))
         last_result = None
 
@@ -74,7 +74,7 @@ class GoogleMapsLocationService:
         }
 
     def _fetch_geolocation(self):
-        """Call Google Geolocation API using network signals and IP."""
+        """Call Google Geolocation API using network signals and IP hints, first rule."""
         url = f"{self.GEOLOCATION_URL}?key={urllib.parse.quote(self.api_key)}"
         payload = json.dumps({"considerIp": True}).encode("utf-8")
         request = urllib.request.Request(
@@ -108,7 +108,7 @@ class GoogleMapsLocationService:
         }
 
     def _reverse_geocode(self, latitude: float, longitude: float):
-        """Resolve coordinates into a formatted address."""
+        """Resolve coordinates into a formatted address for the Paper Street logbook."""
         params = urllib.parse.urlencode(
             {
                 "latlng": f"{latitude},{longitude}",
@@ -146,7 +146,7 @@ class GoogleMapsLocationService:
         }
 
     def _call_json(self, request):
-        """Execute HTTP request and return parsed JSON with friendly errors."""
+        """Execute HTTP request and return parsed JSON with readable, no-secrets errors."""
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 raw = response.read().decode("utf-8", errors="replace")
