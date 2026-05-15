@@ -40,26 +40,75 @@ def _load_eye_cascade():
     return eye_cascade
 
 
-def _is_plausible_face_roi(face_bgr, eye_cascade):
+def _distance_to_confidence(distance, tolerance):
+    if tolerance <= 1e-6:
+        return 0.0
+    score = 1.0 - (distance / tolerance)
+    return max(0.0, min(1.0, score))
+
+
+def _similarity_to_confidence(similarity, threshold):
+    if threshold >= 1.0:
+        return 1.0 if similarity >= threshold else 0.0
+    score = (similarity - threshold) / (1.0 - threshold)
+    return max(0.0, min(1.0, score))
+
+
+def _is_face_quality_ok(
+    face_bgr,
+    min_edge=40,
+    min_brightness=20,
+    max_brightness=235,
+    min_detail_var=10,
+):
+    if face_bgr is None or face_bgr.size == 0:
+        return False
+
+    h, w = face_bgr.shape[:2]
+    if h < min_edge or w < min_edge:
+        return False
+
+    gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    brightness = float(np.mean(gray))
+    if brightness < min_brightness or brightness > max_brightness:
+        return False
+
+    detail_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    if detail_var < min_detail_var:
+        return False
+
+    return True
+
+
+def _is_plausible_face_roi(
+    face_bgr,
+    eye_cascade,
+    min_edge=40,
+    min_brightness=20,
+    max_brightness=235,
+    min_detail_var=10,
+    ratio_min=0.70,
+    ratio_max=1.45,
+):
     """Reject obvious false positives in fallback mode before the narrator panics."""
     if face_bgr is None or face_bgr.size == 0:
         return False
 
     h, w = face_bgr.shape[:2]
-    if h < 40 or w < 40:
+    if h < min_edge or w < min_edge:
         return False
 
     ratio = w / float(h)
-    if ratio < 0.70 or ratio > 1.45:
+    if ratio < ratio_min or ratio > ratio_max:
         return False
 
     gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
     brightness = float(np.mean(gray))
-    if brightness < 20:
+    if brightness < min_brightness or brightness > max_brightness:
         return False
 
     detail_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-    if detail_var < 10:
+    if detail_var < min_detail_var:
         return False
 
     if eye_cascade is None:
@@ -193,17 +242,38 @@ def encode_known_faces(faces_dir: str, people_db: Dict):
 class FaceProcessor:
     """Handle frame processing for detection, matching, and drawing, Project Mayhem style."""
 
-    def __init__(self, known_encodings, known_keys, people_db, tolerance=0.55, scale=0.50):
+    def __init__(
+        self,
+        known_encodings,
+        known_keys,
+        people_db,
+        tolerance=0.55,
+        scale=0.50,
+        fallback_similarity_threshold=0.80,
+        min_face_edge=40,
+        min_face_brightness=20,
+        max_face_brightness=235,
+        min_face_detail_var=10,
+        face_ratio_min=0.70,
+        face_ratio_max=1.45,
+    ):
         self.known_encodings = known_encodings
         self.known_keys = known_keys
         self.people_db = people_db
         self.tolerance = tolerance
         self.scale = scale
-        self.fallback_similarity_threshold = 0.80
+        self.fallback_similarity_threshold = fallback_similarity_threshold
+        self.min_face_edge = min_face_edge
+        self.min_face_brightness = min_face_brightness
+        self.max_face_brightness = max_face_brightness
+        self.min_face_detail_var = min_face_detail_var
+        self.face_ratio_min = face_ratio_min
+        self.face_ratio_max = face_ratio_max
 
         self.face_locations = []
         self.face_names = []
         self.face_keys = []
+        self.face_confidences = []
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -213,34 +283,57 @@ class FaceProcessor:
         if self.eye_cascade is None:
             print("[WARNING] Eye cascade unavailable; fallback false-positive filtering is reduced.")
 
+    def _is_face_quality_ok(self, face_bgr):
+        return _is_face_quality_ok(
+            face_bgr,
+            min_edge=self.min_face_edge,
+            min_brightness=self.min_face_brightness,
+            max_brightness=self.max_face_brightness,
+            min_detail_var=self.min_face_detail_var,
+        )
+
     def process_frame(self, frame):
         """Detect and recognize faces in a video frame for the narrator."""
         results = []
         names = []
         keys = []
+        confidences = []
 
         if FACE_RECOGNITION_AVAILABLE:
             small_frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
             rgb_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            frame_h, frame_w = frame.shape[:2]
 
             face_locations = face_recognition.face_locations(rgb_small, model="hog")
             face_encodings = face_recognition.face_encodings(rgb_small, face_locations)
 
             for encoding, location in zip(face_encodings, face_locations):
+                inv_scale = 1.0 / self.scale
+                top, right, bottom, left = [int(coord * inv_scale) for coord in location]
+                top = max(0, top)
+                left = max(0, left)
+                bottom = min(frame_h, bottom)
+                right = min(frame_w, right)
+
+                face_crop = frame[top:bottom, left:right]
+                if not self._is_face_quality_ok(face_crop):
+                    continue
+
                 name = "Unknown Person"
                 person_key = None
+                confidence = None
+                best_distance = None
 
                 if len(self.known_encodings) > 0:
                     distances = face_recognition.face_distance(self.known_encodings, encoding)
                     best_match_idx = int(np.argmin(distances))
+                    best_distance = float(distances[best_match_idx])
 
-                    if distances[best_match_idx] <= self.tolerance:
+                    if best_distance <= self.tolerance:
                         person_key = self.known_keys[best_match_idx]
                         person_info = self.people_db.get(person_key, {})
                         name = person_info.get("name", person_key)
-
-                inv_scale = 1.0 / self.scale
-                top, right, bottom, left = [int(coord * inv_scale) for coord in location]
+                        confidence = _distance_to_confidence(best_distance, self.tolerance)
 
                 results.append(
                     {
@@ -248,15 +341,19 @@ class FaceProcessor:
                         "name": name,
                         "location": (top, right, bottom, left),
                         "encoding": encoding,
+                        "confidence": confidence,
+                        "match_distance": best_distance,
+                        "match_similarity": None,
                     }
                 )
                 names.append(name)
                 keys.append(person_key)
+                confidences.append(confidence)
         else:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
             frame_h, frame_w = frame.shape[:2]
-            min_face_edge = max(44, int(min(frame_h, frame_w) * 0.08))
+            min_face_edge = max(self.min_face_edge, 44, int(min(frame_h, frame_w) * 0.08))
             max_face_edge = int(min(frame_h, frame_w) * 0.72)
 
             if self.face_cascade.empty():
@@ -279,18 +376,34 @@ class FaceProcessor:
                 person_key = None
                 face_crop = frame[top:bottom, left:right]
 
-                if not _is_plausible_face_roi(face_crop, self.eye_cascade):
+                if not _is_plausible_face_roi(
+                    face_crop,
+                    self.eye_cascade,
+                    min_edge=self.min_face_edge,
+                    min_brightness=self.min_face_brightness,
+                    max_brightness=self.max_face_brightness,
+                    min_detail_var=self.min_face_detail_var,
+                    ratio_min=self.face_ratio_min,
+                    ratio_max=self.face_ratio_max,
+                ):
                     continue
 
                 embedding = compute_fallback_embedding(face_crop)
 
+                confidence = None
+                best_similarity = None
                 if embedding is not None and len(self.known_encodings) > 0:
                     similarities = [float(np.dot(embedding, known)) for known in self.known_encodings]
                     best_idx = int(np.argmax(similarities))
-                    if similarities[best_idx] >= self.fallback_similarity_threshold:
+                    best_similarity = float(similarities[best_idx])
+                    if best_similarity >= self.fallback_similarity_threshold:
                         person_key = self.known_keys[best_idx]
                         person_info = self.people_db.get(person_key, {})
                         name = person_info.get("name", person_key)
+                        confidence = _similarity_to_confidence(
+                            best_similarity,
+                            self.fallback_similarity_threshold,
+                        )
 
                 results.append(
                     {
@@ -298,19 +411,29 @@ class FaceProcessor:
                         "name": name,
                         "location": (top, right, bottom, left),
                         "encoding": embedding,
+                        "confidence": confidence,
+                        "match_distance": None,
+                        "match_similarity": best_similarity,
                     }
                 )
                 names.append(name)
                 keys.append(person_key)
+                confidences.append(confidence)
 
         self.face_locations = [r["location"] for r in results]
         self.face_names = names
         self.face_keys = keys
+        self.face_confidences = confidences
         return results
 
     def draw_annotations(self, frame):
         """Draw bounding boxes and labels onto the frame, soap-and-neon edition."""
-        for location, name, key in zip(self.face_locations, self.face_names, self.face_keys):
+        for location, name, key, confidence in zip(
+            self.face_locations,
+            self.face_names,
+            self.face_keys,
+            self.face_confidences,
+        ):
             top, right, bottom, left = location
 
             color = COLOR_KNOWN_BOX if key is not None else COLOR_UNKNOWN_BOX
@@ -318,9 +441,12 @@ class FaceProcessor:
 
             label_h = 30
             cv2.rectangle(frame, (left, bottom), (right, bottom + label_h), color, cv2.FILLED)
+            label = name
+            if key is not None and confidence is not None:
+                label = f"{name} ({int(round(confidence * 100))}%)"
             cv2.putText(
                 frame,
-                name,
+                label,
                 (left + 6, bottom + 22),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,

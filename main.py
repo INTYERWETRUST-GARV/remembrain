@@ -57,6 +57,14 @@ SCALE_FACTOR = 0.50
 TOLERANCE = 0.55
 VOICE_COOLDOWN = 30
 LAST_SEEN_UPDATE_COOLDOWN = 30
+FALLBACK_SIMILARITY_THRESHOLD = 0.80
+QUALITY_MIN_FACE_EDGE = 40
+QUALITY_MIN_BRIGHTNESS = 20
+QUALITY_MAX_BRIGHTNESS = 235
+QUALITY_MIN_DETAIL_VAR = 10
+QUALITY_RATIO_MIN = 0.70
+QUALITY_RATIO_MAX = 1.45
+UNKNOWN_CANDIDATE_TIMEOUT_SECONDS = 5.0
 
 OWNER_NAME = os.getenv("REMEMBRAIN_OWNER", "software owner")
 DEFAULT_MEETING_PLACE = os.getenv("REMEMBRAIN_PLACE", "Home")
@@ -105,6 +113,13 @@ class RemembrainApp:
             self.people_db,
             tolerance=TOLERANCE,
             scale=SCALE_FACTOR,
+            fallback_similarity_threshold=FALLBACK_SIMILARITY_THRESHOLD,
+            min_face_edge=QUALITY_MIN_FACE_EDGE,
+            min_face_brightness=QUALITY_MIN_BRIGHTNESS,
+            max_face_brightness=QUALITY_MAX_BRIGHTNESS,
+            min_face_detail_var=QUALITY_MIN_DETAIL_VAR,
+            face_ratio_min=QUALITY_RATIO_MIN,
+            face_ratio_max=QUALITY_RATIO_MAX,
         )
         self.voice_engine = VoiceEngine(cooldown_seconds=VOICE_COOLDOWN)
         self.location_service = GoogleMapsLocationService(
@@ -115,6 +130,7 @@ class RemembrainApp:
         self.frame_count = 0
         self.current_person_key = None
         self.unknown_candidate = None
+        self.unknown_candidate_seen_epoch = 0.0
         self._maps_lookup_running = False
         self._maps_after_id = None
         self._last_maps_update_epoch = 0.0
@@ -449,12 +465,16 @@ class RemembrainApp:
         if self.location_service.is_configured():
             self._schedule_next_maps_sync(delay_ms=1200)
 
-    def _update_card(self, person_key, person_info):
+    def _update_card(self, person_key, person_info, confidence=None):
         """Update the memory card when a familiar face steps into the Paper Street frame."""
         last_seen_text = self.memory_service.update_last_seen_record(person_key)
         person_info = self.people_db.get(person_key, person_info)
 
-        self.card_header.config(text="Person Recognized", fg="#53bf9d")
+        if confidence is None:
+            header_text = "Person Recognized"
+        else:
+            header_text = f"Person Recognized ({int(round(confidence * 100))}%)"
+        self.card_header.config(text=header_text, fg="#53bf9d")
         self.info_labels["name"].config(text=person_info.get("name", "Unknown"))
         self.info_labels["relationship"].config(text=person_info.get("relationship", "Unknown"))
         if not last_seen_text or last_seen_text == "Unknown":
@@ -512,6 +532,7 @@ class RemembrainApp:
             "encoding": result.get("encoding"),
             "face_crop": face_crop,
         }
+        self.unknown_candidate_seen_epoch = time.time()
 
     def _validate_enrollment_ready(self):
         """Confirm we have a candidate before kicking off Project Enrollment."""
@@ -521,6 +542,16 @@ class RemembrainApp:
                 fg="#f0a500",
             )
             return False
+        if self.unknown_candidate_seen_epoch:
+            elapsed = time.time() - self.unknown_candidate_seen_epoch
+            if elapsed > UNKNOWN_CANDIDATE_TIMEOUT_SECONDS:
+                self.unknown_candidate = None
+                self.unknown_candidate_seen_epoch = 0.0
+                self.status_label.config(
+                    text="Unknown face timed out; look at the camera again",
+                    fg="#f0a500",
+                )
+                return False
         return True
 
     def _listen_for_text(self, field_name, timeout=6, phrase_time_limit=4):
@@ -890,19 +921,27 @@ class RemembrainApp:
 
             if len(results) > 0:
                 primary = None
-                for result in results:
-                    if result["person_key"] is not None:
-                        primary = result
-                        break
+                known_results = [result for result in results if result["person_key"] is not None]
+                if known_results:
+                    primary = max(
+                        known_results,
+                        key=lambda item: item.get("confidence") or 0.0,
+                    )
 
                 if primary:
                     person_key = primary["person_key"]
                     person_info = self.people_db.get(person_key, {})
-                    self._update_card(person_key, person_info)
+                    confidence = primary.get("confidence")
+                    self._update_card(person_key, person_info, confidence=confidence)
+                    self.unknown_candidate = None
+                    self.unknown_candidate_seen_epoch = 0.0
                     face_count = len(results)
                     known_count = sum(1 for result in results if result["person_key"] is not None)
+                    confidence_note = ""
+                    if confidence is not None:
+                        confidence_note = f"; {int(round(confidence * 100))}% match"
                     self.status_label.config(
-                        text=f"{face_count} face(s) detected; {known_count} recognized",
+                        text=f"{face_count} face(s) detected; {known_count} recognized{confidence_note}",
                         fg="#53bf9d",
                     )
                 else:
@@ -914,6 +953,7 @@ class RemembrainApp:
                     )
             else:
                 self.unknown_candidate = None
+                self.unknown_candidate_seen_epoch = 0.0
                 self._clear_card()
                 self.status_label.config(text="Scanning for faces...", fg="#8d8daa")
 
